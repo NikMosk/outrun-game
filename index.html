@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>OutRun Style — Playable Ad</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+        body { background: #0a0a2a; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: 'Courier New', monospace; overflow: hidden; position: fixed; width: 100%; height: 100%; }
+        #game-container { position: relative; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+        canvas { display: block; width: auto; height: auto; max-width: 100vw; max-height: 100vh; cursor: pointer; border-radius: 0; box-shadow: none; image-rendering: crisp-edges; image-rendering: pixelated; transition: filter 0.3s ease; }
+        #score { position: fixed; top: 15px; left: 20px; color: #00ffff; font-size: clamp(16px, 5vw, 28px); font-weight: bold; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px); padding: 8px 18px; border-radius: 40px; z-index: 10; pointer-events: none; font-family: 'Courier New', monospace; border: 2px solid #ff00ff; text-shadow: 0 0 5px #00ffff; }
+        #timer { position: fixed; top: 15px; right: 20px; color: #00ffff; font-size: clamp(16px, 5vw, 28px); font-weight: bold; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px); padding: 8px 18px; border-radius: 40px; z-index: 10; pointer-events: none; font-family: 'Courier New', monospace; border: 2px solid #ff00ff; text-shadow: 0 0 5px #00ffff; }
+        #endCard { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); display: none; flex-direction: column; justify-content: center; align-items: center; color: white; z-index: 20; text-align: center; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        #endCard h1 { font-size: clamp(24px, 8vw, 48px); margin-bottom: 15px; background: linear-gradient(135deg, #00ffff, #ff00ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .final-score { font-size: clamp(40px, 12vw, 80px); font-weight: bold; color: #ff00ff; margin: 10px 0; text-shadow: 0 0 10px #ff00ff; }
+        button { background: linear-gradient(135deg, #00ffff, #ff00ff); color: white; border: none; padding: 12px 30px; font-size: clamp(16px, 4vw, 22px); font-weight: bold; border-radius: 50px; margin-top: 25px; cursor: pointer; transition: transform 0.2s; box-shadow: 0 8px 20px rgba(0,255,255,0.3); font-family: 'Courier New', monospace; }
+        button:active { transform: scale(0.96); }
+        #endCard p { font-size: clamp(14px, 4vw, 20px); }
+    </style>
+</head>
+<body>
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+    <div id="score">⭐ 0</div>
+    <div id="timer">⏱ 60</div>
+    <div id="endCard">
+        <h1>🏆 OUTRUN! 🏆</h1>
+        <p>Ты собрал(а)</p>
+        <div class="final-score"><span id="finalScore">0</span> ⭐</div>
+        <button id="installBtn">📲 ПРОДОЛЖИТЬ</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    
+    const BASE_WIDTH = 400;
+    const BASE_HEIGHT = 600;
+    
+    let scale = 1;
+    let offsetX = 0;
+    let offsetY = 0;
+    
+    let score = 0;
+    let gameActive = true;
+    let gameEnded = false;
+    let collisionHappened = false;
+    let crashedNPC = null;
+    let crashedNPCPosition = null;
+    
+    let playerX = BASE_WIDTH / 2;
+    let targetX = BASE_WIDTH / 2;
+    let xTransition = 0;
+    
+    let frame = 0;
+    let frozenFrame = 0;
+    
+    let gameStartTime = Date.now();
+    const gameDuration = 60000;
+    
+    let particles = [];
+    
+    // Музыка
+    let backgroundMusic = new Audio('music.mp3');
+    backgroundMusic.loop = true;
+    backgroundMusic.volume = 0.5;
+    let musicStarted = false;
+    
+    // Загрузка 4 видов машин трафика
+    let trafik1Image = new Image();
+    let trafik1Loaded = false;
+    trafik1Image.src = 'trafik1.png';
+    trafik1Image.onload = () => { trafik1Loaded = true; };
+    
+    let trafik2Image = new Image();
+    let trafik2Loaded = false;
+    trafik2Image.src = 'trafik2.png';
+    trafik2Image.onload = () => { trafik2Loaded = true; };
+    
+    let trafik3Image = new Image();
+    let trafik3Loaded = false;
+    trafik3Image.src = 'trafik3.png';
+    trafik3Image.onload = () => { trafik3Loaded = true; };
+    
+    let trafik4Image = new Image();
+    let trafik4Loaded = false;
+    trafik4Image.src = 'trafik4.png';
+    trafik4Image.onload = () => { trafik4Loaded = true; };
+    
+    let carImage = new Image();
+    let carLoaded = false;
+    carImage.src = 'forward.png';
+    carImage.onload = () => { carLoaded = true; };
+    
+    let palmImage = new Image();
+    let palmLoaded = false;
+    palmImage.src = 'palm.png';
+    palmImage.onload = () => { palmLoaded = true; };
+    
+    let bgImage = new Image();
+    let bgLoaded = false;
+    bgImage.src = 'background.png';
+    bgImage.onload = () => { bgLoaded = true; };
+    
+    // Функция для получения изображения трафика по типу
+    function getTrafficImage(imageType) {
+        switch(imageType) {
+            case 1: return trafik1Image;
+            case 2: return trafik2Image;
+            case 3: return trafik3Image;
+            case 4: return trafik4Image;
+            default: return trafik1Image;
+        }
+    }
+    
+    // Функция для проверки загрузки изображения трафика
+    function isTrafficLoaded(imageType) {
+        switch(imageType) {
+            case 1: return trafik1Loaded;
+            case 2: return trafik2Loaded;
+            case 3: return trafik3Loaded;
+            case 4: return trafik4Loaded;
+            default: return false;
+        }
+    }
+    
+    // Автоматический запуск музыки
+    function startMusic() {
+        if(!musicStarted) {
+            backgroundMusic.play().then(() => {
+                musicStarted = true;
+            }).catch(e => {
+                console.log('Ожидание взаимодействия пользователя');
+            });
+        }
+    }
+    
+    function resizeCanvas() {
+        const containerWidth = window.innerWidth;
+        const containerHeight = window.innerHeight;
+        const scaleX = containerWidth / BASE_WIDTH;
+        const scaleY = containerHeight / BASE_HEIGHT;
+        scale = Math.min(scaleX, scaleY);
+        const scaledWidth = BASE_WIDTH * scale;
+        const scaledHeight = BASE_HEIGHT * scale;
+        canvas.width = BASE_WIDTH;
+        canvas.height = BASE_HEIGHT;
+        canvas.style.width = `${scaledWidth}px`;
+        canvas.style.height = `${scaledHeight}px`;
+        offsetX = (containerWidth - scaledWidth) / 2;
+        offsetY = (containerHeight - scaledHeight) / 2;
+        canvas.style.position = 'absolute';
+        canvas.style.left = `${offsetX}px`;
+        canvas.style.top = `${offsetY}px`;
+    }
+    
+    function addParticle(x, y) {
+        particles.push({ x: x, y: y, life: 1, size: 5 });
+    }
+    
+    function drawCar(x, y) {
+        if(carLoaded && carImage.complete) {
+            ctx.drawImage(carImage, x - 45, y - 30, 90, 60);
+        } else {
+            ctx.fillStyle = '#CC0000';
+            ctx.fillRect(x - 40, y - 15, 80, 30);
+        }
+    }
+    
+    function drawCrashedNPC(x, y, imageType) {
+        let trafikImg = getTrafficImage(imageType);
+        if(isTrafficLoaded(imageType)) {
+            ctx.save();
+            ctx.globalAlpha = 0.8;
+            ctx.drawImage(trafikImg, x - 35, y - 30, 70, 50);
+            ctx.restore();
+            ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
+            ctx.beginPath();
+            ctx.ellipse(x, y - 20, 15, 10, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+    
+    function update() {
+        if(gameEnded) return;
+        if(!gameActive && !collisionHappened) return;
+        
+        if(!collisionHappened) {
+            if(targetX !== playerX) {
+                xTransition += 0.1;
+                if(xTransition >= 1) {
+                    playerX = targetX;
+                    xTransition = 0;
+                }
+            }
+        }
+        
+        const currentX = playerX + (targetX - playerX) * xTransition;
+        
+        if(typeof window.roadObjects !== 'undefined') {
+            if(!collisionHappened) {
+                for(let i = 0; i < window.roadObjects.length; i++) {
+                    let obj = window.roadObjects[i];
+                    if(obj.collected) continue;
+                    if(!obj.active) continue;
+                    
+                    let t = (obj.y - (BASE_HEIGHT / 2)) / (BASE_HEIGHT - (BASE_HEIGHT / 2));
+                    t = Math.min(0.95, Math.max(0, t));
+                    let scale = 0.3 + t * 1.2;
+                    let width = 40 * scale;
+                    let roadWidthAtY = 40 + (BASE_WIDTH - 120 - 40) * t;
+                    let objX = BASE_WIDTH / 2 + obj.lane * (1 - t) * 1.2;
+                    objX = Math.min(BASE_WIDTH / 2 + roadWidthAtY / 2 - 15, 
+                                   Math.max(BASE_WIDTH / 2 - roadWidthAtY / 2 + 15, objX));
+                    
+                    if(Math.abs(objX - currentX) < width/2 + 32.5 && Math.abs(obj.y - (BASE_HEIGHT - 40)) < 65) {
+                        if(obj.type === 'npc') {
+                            collisionHappened = true;
+                            gameActive = false;
+                            crashedNPC = obj;
+                            crashedNPCPosition = { x: objX, y: obj.y };
+                            frozenFrame = frame;
+                            
+                            for(let p = 0; p < 40; p++) {
+                                addParticle(objX, obj.y);
+                            }
+                            
+                            obj.active = false;
+                            
+                            // При аварии останавливаем музыку
+                            backgroundMusic.pause();
+                            musicStarted = false;
+                            
+                            setTimeout(() => {
+                                if(!gameEnded) {
+                                    endGame(false);
+                                }
+                            }, 1500);
+                            return;
+                        } else if(!obj.collected) {
+                            obj.collected = true;
+                            score++;
+                            document.getElementById('score').innerText = `⭐ ${score}`;
+                            addParticle(objX, obj.y);
+                        }
+                    }
+                }
+            }
+            
+            if(collisionHappened) {
+                for(let i = 0; i < window.roadObjects.length; i++) {
+                    let obj = window.roadObjects[i];
+                    if(obj.collected) continue;
+                    if(obj.type === 'npc' && obj !== crashedNPC && obj.active) {
+                        const horizonY = BASE_HEIGHT / 2;
+                        obj.y -= 5;
+                        
+                        if(obj.y < horizonY - 30) {
+                            obj.active = false;
+                        }
+                    }
+                }
+            }
+        }
+        
+        particles = particles.filter(p => {
+            p.life -= 0.05;
+            p.y -= 2;
+            return p.life > 0;
+        });
+        
+        frame++;
+        
+        if(!collisionHappened && Date.now() - gameStartTime >= gameDuration && !gameEnded) {
+            endGame(true);
+        }
+    }
+    
+    function drawHorizon() {
+        const horizonY = BASE_HEIGHT / 2 + 22;
+        
+        const grad = ctx.createLinearGradient(0, 0, 0, horizonY);
+        grad.addColorStop(0, '#1a0a3a');
+        grad.addColorStop(0.4, '#4a1a6a');
+        grad.addColorStop(1, '#ff6a3a');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, BASE_WIDTH, horizonY);
+        
+        ctx.fillStyle = 'rgba(255,170,51,0.3)';
+        ctx.beginPath();
+        ctx.arc(BASE_WIDTH / 2, horizonY - 0, 90, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.fillStyle = 'rgba(200, 180, 150, 0.25)';
+        ctx.fillRect(0, horizonY - 50, BASE_WIDTH, 80);
+        
+        ctx.fillStyle = 'rgba(255,200,150,0.3)';
+        ctx.fillRect(50, horizonY - 80, 80, 20);
+        ctx.fillRect(80, horizonY - 90, 60, 18);
+        ctx.fillRect(250, horizonY - 70, 70, 16);
+    }
+    
+    function drawRoad() {
+        const horizonY = BASE_HEIGHT / 2;
+        const roadTopWidth = 40;
+        const roadBottomWidth = BASE_WIDTH - 120;
+        
+        ctx.fillStyle = '#c2a366';
+        ctx.beginPath();
+        ctx.moveTo(0, horizonY);
+        ctx.lineTo(BASE_WIDTH / 2 - roadTopWidth / 2, horizonY);
+        ctx.lineTo(BASE_WIDTH / 2 - roadBottomWidth / 2, BASE_HEIGHT);
+        ctx.lineTo(0, BASE_HEIGHT);
+        ctx.fill();
+        
+        ctx.beginPath();
+        ctx.moveTo(BASE_WIDTH, horizonY);
+        ctx.lineTo(BASE_WIDTH / 2 + roadTopWidth / 2, horizonY);
+        ctx.lineTo(BASE_WIDTH / 2 + roadBottomWidth / 2, BASE_HEIGHT);
+        ctx.lineTo(BASE_WIDTH, BASE_HEIGHT);
+        ctx.fill();
+        
+        ctx.fillStyle = '#2a2a3e';
+        ctx.beginPath();
+        ctx.moveTo(BASE_WIDTH / 2 - roadTopWidth / 2, horizonY);
+        ctx.lineTo(BASE_WIDTH / 2 + roadTopWidth / 2, horizonY);
+        ctx.lineTo(BASE_WIDTH / 2 + roadBottomWidth / 2, BASE_HEIGHT);
+        ctx.lineTo(BASE_WIDTH / 2 - roadBottomWidth / 2, BASE_HEIGHT);
+        ctx.fill();
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(BASE_WIDTH / 2 - roadTopWidth / 2 - 2, horizonY);
+        ctx.lineTo(BASE_WIDTH / 2 - roadTopWidth / 2, horizonY);
+        ctx.lineTo(BASE_WIDTH / 2 - roadBottomWidth / 2, BASE_HEIGHT);
+        ctx.lineTo(BASE_WIDTH / 2 - roadBottomWidth / 2 - 3, BASE_HEIGHT);
+        ctx.fill();
+        
+        ctx.beginPath();
+        ctx.moveTo(BASE_WIDTH / 2 + roadTopWidth / 2, horizonY);
+        ctx.lineTo(BASE_WIDTH / 2 + roadTopWidth / 2 + 2, horizonY);
+        ctx.lineTo(BASE_WIDTH / 2 + roadBottomWidth / 2 + 3, BASE_HEIGHT);
+        ctx.lineTo(BASE_WIDTH / 2 + roadBottomWidth / 2, BASE_HEIGHT);
+        ctx.fill();
+        
+        if(palmLoaded && !collisionHappened) {
+            if(typeof window.palms === 'undefined') {
+                window.palms = [];
+                const palmCount = 30;
+                const startY = horizonY - 120;
+                
+                for(let i = 0; i < palmCount; i++) {
+                    window.palms.push({
+                        y: startY + i * 55,
+                        active: true
+                    });
+                }
+            }
+            
+            for(let i = 0; i < window.palms.length; i++) {
+                let p = window.palms[i];
+                
+                let t = (p.y - horizonY) / (BASE_HEIGHT - horizonY);
+                t = Math.min(0.98, Math.max(-0.2, t));
+                let speed = 0.8 + Math.max(0, t) * 6.0;
+                
+                p.y += speed;
+                
+                if(p.y > BASE_HEIGHT + 100) {
+                    p.y = horizonY - 120;
+                    t = 0;
+                }
+                
+                if(p.y < horizonY - 30) continue;
+                
+                let drawT = (p.y - horizonY) / (BASE_HEIGHT - horizonY);
+                drawT = Math.min(0.98, Math.max(0, drawT));
+                
+                let alphaPalm = Math.min(1, drawT * 3.0);
+                
+                const palmScale = 0.12 + drawT * 2.6;
+                const palmWidth = 55 * palmScale;
+                const roadWidthAtY = roadTopWidth + (roadBottomWidth - roadTopWidth) * drawT;
+                
+                const leftX = BASE_WIDTH / 2 - roadWidthAtY / 2 - palmWidth - 8;
+                if(leftX + palmWidth > -40 && leftX < BASE_WIDTH + 40) {
+                    ctx.save();
+                    ctx.globalAlpha = alphaPalm;
+                    ctx.translate(leftX + palmWidth / 2, p.y - 8);
+                    ctx.scale(-palmScale, palmScale);
+                    ctx.drawImage(palmImage, -25, -45, 50, 90);
+                    ctx.restore();
+                }
+                
+                const rightX = BASE_WIDTH / 2 + roadWidthAtY / 2 + 8;
+                if(rightX - palmWidth < BASE_WIDTH + 40 && rightX > -40) {
+                    ctx.save();
+                    ctx.globalAlpha = alphaPalm;
+                    ctx.drawImage(palmImage, rightX, p.y - 45 * palmScale, palmWidth, 90 * palmScale);
+                    ctx.restore();
+                }
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        if(bgLoaded) {
+            const bgHeight = 350;
+            const bgY = horizonY - bgHeight + 142;
+            ctx.drawImage(bgImage, 0, bgY, BASE_WIDTH, bgHeight);
+        }
+        
+        const currentFrame = collisionHappened ? frozenFrame : frame;
+        
+        const lineCount = 30;
+        for(let i = 0; i < lineCount; i++) {
+            let y = horizonY + i * 25 + currentFrame * 4;
+            
+            while(y > BASE_HEIGHT + 50) {
+                y = y - (BASE_HEIGHT + 50 - horizonY);
+            }
+            
+            if(y < horizonY) continue;
+            
+            let t = (y - horizonY) / (BASE_HEIGHT - horizonY);
+            t = Math.min(0.98, Math.max(0, t));
+            
+            let lineWidth = 0.8 + t * 5.2;
+            lineWidth = Math.min(6, Math.max(0.8, lineWidth));
+            
+            let alpha = 0.2 + t * 0.8;
+            ctx.fillStyle = `rgba(255, 255, 0, ${alpha})`;
+            
+            let lineHeight = 2 + t * 13;
+            
+            ctx.fillRect(BASE_WIDTH / 2 - lineWidth / 2, y, lineWidth, lineHeight);
+        }
+        
+        if(typeof window.roadObjects === 'undefined') {
+            window.roadObjects = [];
+            window.roadObjectsSpawnTime = Date.now();
+            const objectCount = 10;
+            
+            for(let i = 0; i < objectCount; i++) {
+                window.roadObjects.push({
+                    y: horizonY - 50 - i * 30,
+                    lane: (Math.random() - 0.5) * 70,
+                    type: Math.random() < 0.6 ? 'npc' : 'powerup',
+                    imageType: Math.floor(Math.random() * 4) + 1,
+                    collected: false,
+                    active: false
+                });
+            }
+        }
+        
+        for(let i = 0; i < window.roadObjects.length; i++) {
+            let obj = window.roadObjects[i];
+            if(obj.collected) continue;
+            
+            if(!collisionHappened && !obj.active && Date.now() - window.roadObjectsSpawnTime > 3000) {
+                obj.active = true;
+            }
+            
+            if(!obj.active) continue;
+            
+            let t = (obj.y - horizonY) / (BASE_HEIGHT - horizonY);
+            t = Math.min(0.95, Math.max(0, t));
+            
+            if(!collisionHappened) {
+                let speed = 1.0 + t * 4.5;
+                obj.y += speed;
+            }
+            
+            if(obj.y > BASE_HEIGHT + 100) {
+                obj.y = horizonY - 30;
+                obj.lane = (Math.random() - 0.5) * 70;
+                obj.type = Math.random() < 0.6 ? 'npc' : 'powerup';
+                obj.imageType = Math.floor(Math.random() * 4) + 1;
+                obj.collected = false;
+                continue;
+            }
+            
+            if(obj.y < horizonY) continue;
+            
+            let drawT = (obj.y - horizonY) / (BASE_HEIGHT - horizonY);
+            drawT = Math.min(0.98, Math.max(0, drawT));
+            
+            let scale = 0.3 + drawT * 1.2;
+            let width = 55 * scale;
+            let height = 45 * scale;
+            let roadWidthAtY = roadTopWidth + (roadBottomWidth - roadTopWidth) * drawT;
+            let objX = BASE_WIDTH / 2 + obj.lane * (1 - drawT) * 1.2;
+            
+            objX = Math.min(BASE_WIDTH / 2 + roadWidthAtY / 2 - 15, 
+                           Math.max(BASE_WIDTH / 2 - roadWidthAtY / 2 + 15, objX));
+            
+            if(obj.type === 'npc') {
+                let trafikImg = getTrafficImage(obj.imageType);
+                if(isTrafficLoaded(obj.imageType)) {
+                    ctx.drawImage(trafikImg, objX - width/1.5, obj.y - height, width, height);
+                } else {
+                    ctx.fillStyle = '#3366FF';
+                    ctx.fillRect(objX - width/2, obj.y - height, width, height);
+                }
+            } else {
+                ctx.font = `${28 * scale}px monospace`;
+                ctx.fillStyle = '#ff00ff';
+                ctx.fillText('⭐', objX - width/2, obj.y - height/2 + 10);
+                ctx.fillStyle = '#00ffff';
+                ctx.fillText('⭐', objX - width/2 - 2 * scale, obj.y - height/2 + 8 * scale);
+            }
+        }
+        
+        if(collisionHappened && crashedNPC) {
+            drawCrashedNPC(crashedNPCPosition.x, crashedNPCPosition.y, crashedNPC.imageType);
+        }
+    }
+    
+    function drawParticles() {
+        for(let p of particles) {
+            ctx.fillStyle = `rgba(255, 0, 255, ${p.life})`;
+            ctx.fillRect(p.x, p.y, p.size, p.size);
+        }
+    }
+    
+    function draw() {
+        drawHorizon();
+        drawRoad();
+        
+        const currentX = playerX + (targetX - playerX) * xTransition;
+        drawCar(currentX, BASE_HEIGHT - 40);
+        
+        drawParticles();
+        
+        if(gameActive && !gameEnded && !collisionHappened) {
+            const elapsed = Math.floor((Date.now() - gameStartTime) / 1000);
+            document.getElementById('timer').innerText = `⏱ ${Math.max(0, 60 - elapsed)}`;
+        }
+    }
+    
+    function handleTap(e) {
+        e.preventDefault();
+        if(!gameActive || gameEnded || collisionHappened) return;
+        
+        // Запускаем музыку при первом касании
+        startMusic();
+        
+        const rect = canvas.getBoundingClientRect();
+        let clientX;
+        if(e.touches) {
+            clientX = e.touches[0].clientX;
+        } else {
+            clientX = e.clientX;
+        }
+        
+        const canvasX = (clientX - rect.left) * (BASE_WIDTH / rect.width);
+        
+        if(canvasX < BASE_WIDTH / 2) {
+            targetX = Math.max(60, targetX - 30);
+        } else {
+            targetX = Math.min(BASE_WIDTH - 60, targetX + 30);
+        }
+    }
+    
+    function endGame(isWin = false) {
+        if(gameEnded) return;
+        gameEnded = true;
+        gameActive = false;
+        
+        // Останавливаем музыку в конце игры
+        backgroundMusic.pause();
+        musicStarted = false;
+        
+        document.getElementById('finalScore').innerText = score;
+        const endCard = document.getElementById('endCard');
+        endCard.querySelector('h1').innerHTML = isWin ? '🏆 OUTRUN! 🏆' : '🏆 CRASH! 🏆';
+        endCard.style.display = 'flex';
+    }
+    
+    function gameLoop() {
+        update();
+        draw();
+        requestAnimationFrame(gameLoop);
+    }
+    
+    window.addEventListener('resize', () => { resizeCanvas(); draw(); });
+    canvas.addEventListener('mousedown', handleTap);
+    canvas.addEventListener('touchstart', handleTap, { passive: false });
+    
+    resizeCanvas();
+    gameLoop();
+</script>
+</body>
+</html>
