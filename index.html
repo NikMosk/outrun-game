@@ -217,7 +217,7 @@
                     objX = Math.min(BASE_WIDTH / 2 + roadWidthAtY / 2 - 15, 
                                    Math.max(BASE_WIDTH / 2 - roadWidthAtY / 2 + 15, objX));
                     
-                    if(Math.abs(objX - currentX) < width/2 + 32.5 && Math.abs(obj.y - (BASE_HEIGHT - 40)) < 65) {
+                    if(Math.abs(objX - currentX) < width/2 + 32.5 && Math.abs(obj.y - (BASE_HEIGHT - 40)) < 39) {
                         if(obj.type === 'npc') {
                             collisionHappened = true;
                             gameActive = false;
